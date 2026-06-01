@@ -1,0 +1,76 @@
+use sqlx::PgPool;
+use tokio::time::{sleep, Duration};
+use tracing::{info, error, warn};
+
+use crate::dispatcher::Dispatcher;
+
+/// Check interval for position health.
+const CHECK_INTERVAL: Duration = Duration::from_secs(30);
+
+/// Health factor thresholds.
+const WARNING_THRESHOLD: f64 = 1.3;
+const LIQUIDATION_THRESHOLD: f64 = 1.2;
+
+/// Periodically check position health factors.
+pub async fn run(db: PgPool, dispatcher: Dispatcher) {
+    info!("health watcher started");
+
+    loop {
+        if let Err(e) = check_all(&db).await {
+            error!("health check failed: {}", e);
+        }
+
+        sleep(CHECK_INTERVAL).await;
+    }
+}
+
+/// Query all open positions and recalculate health factors.
+async fn check_all(db: &PgPool) -> anyhow::Result<()> {
+    let positions = sqlx::query_as::<_, (String, String, String, f64, f64, f64, f64)>(
+        "SELECT soroban_position_id, direction, city_code, collateral, size, entry_price, current_price
+         FROM positions
+         WHERE status = 'open' AND soroban_position_id IS NOT NULL"
+    )
+    .fetch_all(db)
+    .await?;
+
+    for (id, direction, city, collateral, size, entry_price, current_price) in positions {
+        let health = calculate_health(&direction, collateral, size, entry_price, current_price);
+
+        // Update health factor in DB
+        let _ = sqlx::query(
+            "UPDATE positions SET health_factor = $1, unrealized_pnl = $2 WHERE soroban_position_id = $3"
+        )
+        .bind(health)
+        .bind(calculate_pnl(&direction, size, entry_price, current_price))
+        .bind(&id)
+        .execute(db)
+        .await;
+
+        if health < LIQUIDATION_THRESHOLD {
+            warn!(position = %id, health, "position below liquidation threshold — flagging for keeper");
+        } else if health < WARNING_THRESHOLD {
+            warn!(position = %id, health, "position in danger zone");
+        }
+    }
+
+    Ok(())
+}
+
+fn calculate_health(direction: &str, collateral: f64, size: f64, entry: f64, current: f64) -> f64 {
+    if collateral == 0.0 || entry == 0.0 {
+        return 0.0;
+    }
+    let pnl = calculate_pnl(direction, size, entry, current);
+    let equity = collateral + pnl;
+    let maintenance = collateral * 0.8;
+    if maintenance == 0.0 { f64::MAX } else { equity / maintenance }
+}
+
+fn calculate_pnl(direction: &str, size: f64, entry: f64, current: f64) -> f64 {
+    match direction {
+        "long" => size * (current - entry) / entry,
+        "short" => size * (entry - current) / entry,
+        _ => 0.0,
+    }
+}
