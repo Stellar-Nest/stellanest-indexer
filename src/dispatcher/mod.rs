@@ -90,20 +90,25 @@ impl Dispatcher {
         }
 
         // Insert history
-        let _ = sqlx::query(
+        match sqlx::query(
             "INSERT INTO index_history (time, city_code, close, source_count) VALUES (NOW(), $1, $2, $3)"
         )
         .bind(city)
         .bind(value)
         .bind(sources)
         .execute(&self.db)
-        .await;
+        .await {
+            Ok(_) => {},
+            Err(e) => {
+                error!(error = %e, "failed to insert into index_history");
+            }
+        }
 
         info!(city, value, change, "index updated");
     }
 
     async fn handle_position_opened(&self, id: &str, wallet: &str, city: &str, direction: &str, size: f64) {
-        let _ = sqlx::query(
+        match sqlx::query(
             "INSERT INTO positions (user_wallet, city_code, direction, size, status, soroban_position_id)
              VALUES ($1, $2, $3, $4, 'open', $5)"
         )
@@ -113,32 +118,47 @@ impl Dispatcher {
         .bind(size)
         .bind(id)
         .execute(&self.db)
-        .await;
+        .await {
+            Ok(_) => {},
+            Err(e) => {
+                error!(error = %e, "failed to insert into positions");
+            }
+        }
 
         info!(id, wallet, city, direction, size, "position opened");
     }
 
     async fn handle_position_closed(&self, id: &str, pnl: f64) {
-        let _ = sqlx::query(
+        match sqlx::query(
             "UPDATE positions SET status = 'closed', realized_pnl = $1, closed_at = NOW() WHERE soroban_position_id = $2"
         )
         .bind(pnl)
         .bind(id)
         .execute(&self.db)
-        .await;
+        .await {
+            Ok(_) => {},
+            Err(e) => {
+                error!(error = %e, "failed to update positions");
+            }
+        }
 
         info!(id, pnl, "position closed");
     }
 
     async fn handle_liquidation(&self, id: &str, wallet: &str, city: &str, seized: f64, penalty: f64, tx: &str) {
-        let _ = sqlx::query(
+        match sqlx::query(
             "UPDATE positions SET status = 'liquidated', closed_at = NOW() WHERE soroban_position_id = $1"
         )
         .bind(id)
         .execute(&self.db)
-        .await;
+        .await {
+            Ok(_) => {},
+            Err(e) => {
+                error!(error = %e, "failed to update positions");
+            }
+        }
 
-        let _ = sqlx::query(
+        match sqlx::query(
             "INSERT INTO liquidations (position_id, user_wallet, city_code, collateral_seized, penalty, tx_hash)
              VALUES ($1, $2, $3, $4, $5, $6)"
         )
@@ -149,13 +169,18 @@ impl Dispatcher {
         .bind(penalty)
         .bind(tx)
         .execute(&self.db)
-        .await;
+        .await {
+            Ok(_) => {},
+            Err(e) => {
+                error!(error = %e, "failed to insert into liquidations");
+            }
+        }
 
         info!(id, seized, penalty, "liquidation processed");
     }
 
     async fn handle_trade(&self, city: &str, price: f64, size: f64, side: &str, tx: &str) {
-        let _ = sqlx::query(
+        match sqlx::query(
             "INSERT INTO trades (time, city_code, price, size, side, tx_hash) VALUES (NOW(), $1, $2, $3, $4, $5)"
         )
         .bind(city)
@@ -164,6 +189,11 @@ impl Dispatcher {
         .bind(side)
         .bind(tx)
         .execute(&self.db)
-        .await;
+        .await {
+            Ok(_) => {},
+            Err(e) => {
+                error!(error = %e, "failed to insert into trades");
+            }
+        }
     }
 }
