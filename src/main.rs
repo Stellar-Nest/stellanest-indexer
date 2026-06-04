@@ -35,13 +35,21 @@ async fn main() -> anyhow::Result<()> {
 
     let dispatcher = dispatcher::Dispatcher::new(db.clone(), redis);
 
+    // Shared HTTP client with timeouts
+    let http_client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(30))
+        .build()?;
+    tracing::info!("HTTP client configured with 10s connect / 30s request timeouts");
+
     // Spawn watchers
     let dex_handle = {
         let db = db.clone();
         let horizon = horizon_url.clone();
         let disp = dispatcher.clone();
+        let client = http_client.clone();
         tokio::spawn(async move {
-            watchers::dex::run(db, horizon, disp).await;
+            watchers::dex::run(db, horizon, disp, client).await;
         })
     };
 
@@ -49,8 +57,9 @@ async fn main() -> anyhow::Result<()> {
         let db = db.clone();
         let horizon = horizon_url.clone();
         let disp = dispatcher.clone();
+        let client = http_client.clone();
         tokio::spawn(async move {
-            watchers::contracts::run(db, horizon, disp).await;
+            watchers::contracts::run(db, horizon, disp, client).await;
         })
     };
 

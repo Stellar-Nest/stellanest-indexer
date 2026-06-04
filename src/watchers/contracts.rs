@@ -8,13 +8,13 @@ use crate::dispatcher::{Dispatcher, IndexerEvent};
 const POLL_INTERVAL: Duration = Duration::from_secs(10);
 
 /// Watch Soroban contract events (index_updated, position_*, liquidation).
-pub async fn run(db: PgPool, horizon_url: String, dispatcher: Dispatcher) {
+pub async fn run(db: PgPool, horizon_url: String, dispatcher: Dispatcher, http_client: reqwest::Client) {
     info!("contract event watcher started");
 
     let mut last_ledger: u64 = 0;
 
     loop {
-        match poll_events(&horizon_url, last_ledger).await {
+        match poll_events(&http_client, &horizon_url, last_ledger).await {
             Ok((events, max_ledger)) => {
                 for event in events {
                     dispatcher.dispatch(event).await;
@@ -34,6 +34,7 @@ pub async fn run(db: PgPool, horizon_url: String, dispatcher: Dispatcher) {
 
 /// Fetch Soroban contract events from Stellar Horizon.
 async fn poll_events(
+    http_client: &reqwest::Client,
     horizon_url: &str,
     last_ledger: u64,
 ) -> anyhow::Result<(Vec<IndexerEvent>, u64)> {
@@ -42,7 +43,7 @@ async fn poll_events(
         horizon_url
     );
 
-    let resp = reqwest::get(&url).await?;
+    let resp = http_client.get(&url).send().await?;
     let body: serde_json::Value = resp.json().await?;
 
     let mut events = Vec::new();
