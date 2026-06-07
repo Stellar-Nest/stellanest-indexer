@@ -30,7 +30,7 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("connected to PostgreSQL");
 
     let redis_client = redis::Client::open(redis_url)?;
-    let redis = redis_client.get_async_connection().await?;
+    let redis = redis_client.get_multiplexed_async_connection().await?;
     tracing::info!("connected to Redis");
 
     let dispatcher = dispatcher::Dispatcher::new(db.clone(), redis);
