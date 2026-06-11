@@ -61,11 +61,19 @@ async fn poll_trades(
                 .unwrap_or(0.0) / record["price"]["d"].as_f64().unwrap_or(1.0);
             let size: f64 = record["base_amount"].as_f64().unwrap_or(0.0);
 
+            // Determine trade side from Horizon's base_is_seller field
+            // If the base asset seller initiated the trade, it's a "sell" from their perspective
+            let side = if record["base_is_seller"].as_bool().unwrap_or(false) {
+                "sell".to_string()
+            } else {
+                "buy".to_string()
+            };
+
             events.push(IndexerEvent::TradeExecuted {
                 city_code,
                 price,
                 size,
-                side: "buy".into(), // Simplified
+                side,
                 tx_hash: record["paging_token"].as_str().unwrap_or("").into(),
             });
 
