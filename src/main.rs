@@ -31,7 +31,7 @@ async fn main() -> anyhow::Result<()> {
 
     let redis_client = redis::Client::open(redis_url)?;
     let redis = redis_client.get_multiplexed_async_connection().await?;
-    tracing::info!("connected to Redis");
+    tracing::info!("connected to Redis (multiplexed)");
 
     let dispatcher = dispatcher::Dispatcher::new(db.clone(), redis);
 
