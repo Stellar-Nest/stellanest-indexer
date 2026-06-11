@@ -44,11 +44,11 @@ pub enum IndexerEvent {
 #[derive(Clone)]
 pub struct Dispatcher {
     db: PgPool,
-    redis: redis::aio::Connection,
+    redis: redis::aio::MultiplexedConnection,
 }
 
 impl Dispatcher {
-    pub fn new(db: PgPool, redis: redis::aio::Connection) -> Self {
+    pub fn new(db: PgPool, redis: redis::aio::MultiplexedConnection) -> Self {
         Self { db, redis }
     }
 
