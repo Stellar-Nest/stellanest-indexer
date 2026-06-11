@@ -8,13 +8,13 @@ use crate::dispatcher::{Dispatcher, IndexerEvent};
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
 
 /// Watch Stellar DEX for city index asset trades.
-pub async fn run(db: PgPool, horizon_url: String, dispatcher: Dispatcher) {
+pub async fn run(db: PgPool, horizon_url: String, dispatcher: Dispatcher, http_client: reqwest::Client) {
     info!("DEX watcher started");
 
     let mut cursor: Option<String> = None;
 
     loop {
-        match poll_trades(&horizon_url, cursor.as_deref()).await {
+        match poll_trades(&http_client, &horizon_url, cursor.as_deref()).await {
             Ok((trades, next_cursor)) => {
                 for event in trades {
                     dispatcher.dispatch(event).await;
@@ -32,6 +32,7 @@ pub async fn run(db: PgPool, horizon_url: String, dispatcher: Dispatcher) {
 
 /// Fetch recent trades from Stellar Horizon.
 async fn poll_trades(
+    http_client: &reqwest::Client,
     horizon_url: &str,
     cursor: Option<&str>,
 ) -> anyhow::Result<(Vec<IndexerEvent>, String)> {
@@ -41,7 +42,7 @@ async fn poll_trades(
         format!("{}/trades?order=asc&limit=100", horizon_url)
     };
 
-    let resp = reqwest::get(&url).await?;
+    let resp = http_client.get(&url).send().await?;
     let body: serde_json::Value = resp.json().await?;
 
     let mut events = Vec::new();
