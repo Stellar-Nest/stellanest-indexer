@@ -35,7 +35,11 @@ async fn poll_trades(
     horizon_url: &str,
     cursor: Option<&str>,
 ) -> anyhow::Result<(Vec<IndexerEvent>, String)> {
-    let url = format!("{}/trades?order=desc&limit=100", horizon_url);
+    let url = if let Some(cursor) = cursor {
+        format!("{}/trades?order=asc&limit=100&cursor={}", horizon_url, cursor)
+    } else {
+        format!("{}/trades?order=asc&limit=100", horizon_url)
+    };
 
     let resp = reqwest::get(&url).await?;
     let body: serde_json::Value = resp.json().await?;
